@@ -1,9 +1,32 @@
 import { NextResponse } from "next/server"
-import { getUsers, getQuestions, getExamAttempts } from "@/lib/database"
+import { createClient } from "@supabase/supabase-js"
+
+// Create Supabase client for API routes
+const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 
 export async function GET() {
   try {
-    const [users, questions, examAttempts] = await Promise.all([getUsers(), getQuestions(), getExamAttempts()])
+    // Fetch data from Supabase
+    const [usersResult, questionsResult, examAttemptsResult] = await Promise.all([
+      supabase.from("users").select("*"),
+      supabase.from("questions").select("*"),
+      supabase
+        .from("exam_attempts")
+        .select(`
+          *,
+          users(name),
+          exams(title)
+        `)
+        .order("created_at", { ascending: false }),
+    ])
+
+    if (usersResult.error) throw usersResult.error
+    if (questionsResult.error) throw questionsResult.error
+    if (examAttemptsResult.error) throw examAttemptsResult.error
+
+    const users = usersResult.data || []
+    const questions = questionsResult.data || []
+    const examAttempts = examAttemptsResult.data || []
 
     // Calculate statistics from real data
     const completedAttempts = examAttempts.filter((attempt) => attempt.completed_at)

@@ -24,7 +24,17 @@ import {
 } from "@/components/ui/dialog"
 import { BulkSelectionToolbar } from "@/components/bulk-selection-toolbar"
 import { ArabicConfirmationDialog } from "@/components/arabic-confirmation-dialog"
-import { getQuestions, deleteQuestions, logAdminAction, type Question } from "@/lib/database"
+
+type Question = {
+  id: string
+  category: string
+  question_type: "multiple_choice" | "true_false" | "essay"
+  question_text: string
+  options?: string[]
+  correct_answer: string
+  points: number
+  difficulty: "easy" | "medium" | "hard"
+}
 
 const categories = ["براعم وذو الهمم", "أشبال وزهرات", "كشافة ومرشدات", "متقدم ورائدات", "جوالة ودليلات"]
 
@@ -55,8 +65,12 @@ export default function QuestionsPage() {
     const loadQuestions = async () => {
       try {
         setIsLoading(true)
-        const questionData = await getQuestions()
-        setQuestions(questionData)
+        const response = await fetch("/api/admin/questions")
+        if (!response.ok) {
+          throw new Error("Failed to fetch questions")
+        }
+        const data = await response.json()
+        setQuestions(data.questions)
       } catch (error) {
         console.error("Error loading questions:", error)
         toast({
@@ -105,15 +119,21 @@ export default function QuestionsPage() {
   const confirmBulkDelete = async () => {
     try {
       const selectedIds = Array.from(selectedQuestions)
-      await deleteQuestions(selectedIds)
 
-      await logAdminAction(
-        "current-admin-id", // In real app, get from auth context
-        "bulk_delete_questions",
-        "questions",
-        undefined,
-        { deleted_count: selectedIds.length, question_ids: selectedIds },
-      )
+      const response = await fetch("/api/admin/questions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          action: "delete",
+          questionIds: selectedIds,
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error("Failed to delete questions")
+      }
 
       setQuestions((prev) => prev.filter((question) => !selectedQuestions.has(question.id)))
       setSelectedQuestions(new Set())
@@ -142,15 +162,20 @@ export default function QuestionsPage() {
     if (!questionToDelete) return
 
     try {
-      await deleteQuestions([questionToDelete])
+      const response = await fetch("/api/admin/questions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          action: "delete",
+          questionIds: [questionToDelete],
+        }),
+      })
 
-      await logAdminAction(
-        "current-admin-id", // In real app, get from auth context
-        "delete_question",
-        "questions",
-        questionToDelete,
-        { question_id: questionToDelete },
-      )
+      if (!response.ok) {
+        throw new Error("Failed to delete question")
+      }
 
       setQuestions((prev) => prev.filter((question) => question.id !== questionToDelete))
       toast({
@@ -224,7 +249,7 @@ export default function QuestionsPage() {
     link.click()
   }
 
-  const handleAddQuestion = () => {
+  const handleAddQuestion = async () => {
     if (!newQuestion.category || !newQuestion.question_text) {
       toast({
         title: "خطأ",
@@ -234,32 +259,54 @@ export default function QuestionsPage() {
       return
     }
 
-    const question: Question = {
-      id: Date.now().toString(),
-      category: newQuestion.category,
-      question_type: newQuestion.question_type,
-      question_text: newQuestion.question_text,
-      options: newQuestion.options,
-      correct_answer: newQuestion.correct_answer,
-      points: newQuestion.points,
-      difficulty: newQuestion.difficulty,
-    }
+    try {
+      const response = await fetch("/api/admin/questions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          action: "add",
+          questionData: {
+            category: newQuestion.category,
+            question_type: newQuestion.question_type,
+            question_text: newQuestion.question_text,
+            options: newQuestion.options,
+            correct_answer: newQuestion.correct_answer,
+            points: newQuestion.points,
+            difficulty: newQuestion.difficulty,
+          },
+        }),
+      })
 
-    setQuestions((prev) => [...prev, question])
-    setNewQuestion({
-      category: "",
-      question_type: "multiple_choice",
-      question_text: "",
-      options: ["", "", "", ""],
-      correct_answer: "",
-      points: 1,
-      difficulty: "medium",
-    })
-    setIsAddDialogOpen(false)
-    toast({
-      title: "تم إضافة السؤال بنجاح",
-      description: "تم إضافة السؤال للنظام",
-    })
+      if (!response.ok) {
+        throw new Error("Failed to add question")
+      }
+
+      const data = await response.json()
+      setQuestions((prev) => [...prev, data.question])
+      setNewQuestion({
+        category: "",
+        question_type: "multiple_choice",
+        question_text: "",
+        options: ["", "", "", ""],
+        correct_answer: "",
+        points: 1,
+        difficulty: "medium",
+      })
+      setIsAddDialogOpen(false)
+      toast({
+        title: "تم إضافة السؤال بنجاح",
+        description: "تم إضافة السؤال للنظام",
+      })
+    } catch (error) {
+      console.error("Error adding question:", error)
+      toast({
+        title: "خطأ في الإضافة",
+        description: "حدث خطأ أثناء إضافة السؤال",
+        variant: "destructive",
+      })
+    }
   }
 
   if (isLoading) {

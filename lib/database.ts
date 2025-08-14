@@ -97,6 +97,22 @@ export async function addUser(userData: { name: string; email: string; role: "st
   return data as User
 }
 
+export async function addQuestion(questionData: {
+  question_text: string
+  question_type: "multiple_choice" | "true_false" | "essay"
+  options?: string[]
+  correct_answer?: string
+  points: number
+  category?: string
+  difficulty: "easy" | "medium" | "hard"
+}) {
+  const supabase = createClient()
+  const { data, error } = await supabase.from("questions").insert([questionData]).select().single()
+
+  if (error) throw error
+  return data as Question
+}
+
 export async function deleteUsers(userIds: string[]) {
   const supabase = createClient()
   const { error } = await supabase.from("users").delete().in("id", userIds)
