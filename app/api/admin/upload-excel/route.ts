@@ -1,5 +1,8 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { addUser } from "@/lib/database"
+import { createClient } from "@supabase/supabase-js"
+
+// Create Supabase client for API routes
+const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 
 export async function POST(request: NextRequest) {
   try {
@@ -24,14 +27,44 @@ export async function POST(request: NextRequest) {
       // Simulate adding users from Excel
       // In real implementation, parse Excel and extract user data
       const sampleUsers = [
-        { name: "أحمد محمد", email: "ahmed@example.com", role: "student" as const },
-        { name: "فاطمة علي", email: "fatima@example.com", role: "student" as const },
-        { name: "محمد حسن", email: "mohammed@example.com", role: "student" as const },
+        { name: "أحمد محمد", email: "ahmed@example.com", role: "student" },
+        { name: "فاطمة علي", email: "fatima@example.com", role: "student" },
+        { name: "محمد حسن", email: "mohammed@example.com", role: "student" },
       ]
 
       for (const userData of sampleUsers) {
         try {
-          await addUser(userData)
+          const { data: newUser, error } = await supabase
+            .from("users")
+            .insert([
+              {
+                name: userData.name,
+                email: userData.email,
+                role: userData.role,
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              },
+            ])
+            .select()
+            .single()
+
+          if (error) {
+            console.error("Error adding user:", error)
+            continue
+          }
+
+          // Log admin action
+          await supabase.from("admin_logs").insert([
+            {
+              user_id: "current-admin-id", // In real app, get from auth context
+              action: "add_user_excel",
+              resource_type: "users",
+              resource_id: newUser.id,
+              details: { user_data: userData, source: "excel_upload" },
+              created_at: new Date().toISOString(),
+            },
+          ])
+
           count++
         } catch (error) {
           console.error("Error adding user:", error)
@@ -40,7 +73,63 @@ export async function POST(request: NextRequest) {
     } else if (type === "questions") {
       // Simulate adding questions from Excel
       // In real implementation, parse Excel and extract question data
-      count = 5 // Simulated count
+      const sampleQuestions = [
+        {
+          question_text: "ما هو لون العلم السعودي؟",
+          question_type: "multiple_choice",
+          options: JSON.stringify(["أخضر", "أحمر", "أزرق", "أبيض"]),
+          correct_answer: "أخضر",
+          category: "كشافة ومرشدات",
+          points: 1,
+          difficulty: "easy",
+        },
+        {
+          question_text: "الكشافة حركة تربوية تطوعية",
+          question_type: "true_false",
+          options: JSON.stringify(["صحيح", "خطأ"]),
+          correct_answer: "صحيح",
+          category: "كشافة ومرشدات",
+          points: 1,
+          difficulty: "easy",
+        },
+      ]
+
+      for (const questionData of sampleQuestions) {
+        try {
+          const { data: newQuestion, error } = await supabase
+            .from("questions")
+            .insert([
+              {
+                ...questionData,
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              },
+            ])
+            .select()
+            .single()
+
+          if (error) {
+            console.error("Error adding question:", error)
+            continue
+          }
+
+          // Log admin action
+          await supabase.from("admin_logs").insert([
+            {
+              user_id: "current-admin-id", // In real app, get from auth context
+              action: "add_question_excel",
+              resource_type: "questions",
+              resource_id: newQuestion.id,
+              details: { question_data: questionData, source: "excel_upload" },
+              created_at: new Date().toISOString(),
+            },
+          ])
+
+          count++
+        } catch (error) {
+          console.error("Error adding question:", error)
+        }
+      }
     }
 
     return NextResponse.json({
